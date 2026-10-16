@@ -117,3 +117,30 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); w
 th { color: var(--muted); font-weight: 600; font-size: .8rem; }
 tr.cancelled td { color: var(--booked); text-decoration: line-through; }
 .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .75rem; background: var(--primary-weak); color: var(--primary); }
+
+.summary { margin: 0 0 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: #fff; padding: 6px 14px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--primary); color: #fff; font-weight: 600; }
+
+/* 관리자 달력 */
+.admin-cal .day { min-height: 120px; gap: 5px; }
+.admin-cal .day-head { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.admin-cal .count { font-size: .72rem; font-weight: 600; color: #fff; background: var(--primary); border-radius: 999px; padding: 0 7px; }
+.aslot { border-radius: 6px; padding: 5px 7px; font-size: .78rem; line-height: 1.3; border-left: 3px solid transparent; }
+.aslot .t { display: block; font-size: .7rem; color: var(--muted); }
+.aslot .who { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aslot.taken { background: var(--primary-weak); border-left-color: var(--primary); }
+.aslot.taken .who { color: var(--primary); }
+.aslot.free { background: var(--bg); }
+.aslot.free .who { color: var(--muted); font-weight: 400; }
+.aslot.closed { background: var(--booked-weak); opacity: .6; }
+.aslot.closed .who { color: var(--booked); font-weight: 400; }
+@media (max-width: 720px) {
+  .admin-cal .grid { grid-template-columns: 1fr; }
+  .admin-cal .head { display: none; }
+  .admin-cal .day { min-height: 0; }
+  .admin-cal .day.blank { display: none; }
+}
+.wrap.wide { max-width: 1200px; }
