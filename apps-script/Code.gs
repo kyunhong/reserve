@@ -24,7 +24,7 @@ const CONFIG = {
   // 요일별 가능한 시간대, 하루에 여러 개 가능 (0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토)
   DAY_SLOTS: {
     1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-    2: ['MORNING', 'AFTER'],
+    2: ['MORNING', 'LUNCH', 'AFTER'],
     3: ['MORNING', 'LUNCH', 'AFTER'],
     4: ['MORNING', 'LUNCH', 'AFTER'],
     5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
