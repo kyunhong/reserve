@@ -85,6 +85,10 @@
         api('availability'),
         api('adminList', { adminPassword: state.password, all: $('showAll').checked }),
       ]);
+      // config.js 의 LAST_DATE 이후와 EXCLUDE_DATES 날짜는 학생 화면과 똑같이 달력에서 뺀다
+      const last = CFG.LAST_DATE || '';
+      const excluded = CFG.EXCLUDE_DATES || [];
+      if (avail.days) avail.days = avail.days.filter((d) => (!last || d.date <= last) && !excluded.includes(d.date));
       state.avail = avail;
       state.rows = rows;
       render();
@@ -112,7 +116,7 @@
     const byKey = new Map(active.map((r) => [`${r.date}|${r.slot}`, r]));
     const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
     const total = days.reduce((n, d) => n + d.slots.length, 0);
-    $('summary').textContent = `앞으로 4주 · 예약 ${active.length}건 / 전체 ${total}칸`;
+    $('summary').textContent = `예약 기간 · 예약 ${active.length}건 / 전체 ${total}칸`;
 
     const list = $('list');
     list.innerHTML = '';

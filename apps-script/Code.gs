@@ -11,6 +11,7 @@ const CONFIG = {
   SHEET_NAME: '예약',
   HOLIDAY_SHEET_NAME: '휴무일',
   DAYS_AHEAD: 28, // 오늘부터 며칠 뒤까지 예약을 받을지
+  LAST_DATE: '2026-11-06', // 이 날짜 이후 예약은 서버에서도 거절 (config.js 의 LAST_DATE 와 같게, 제한 없으면 '')
 
   // 시간대 정의 (start 는 HH:mm). 같은 날 시작 시각이 지나면 예약 마감.
   SLOTS: {
@@ -352,14 +353,16 @@ function now_() {
 
 function stamp_() { return Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'); }
 
-/** 오늘부터 DAYS_AHEAD 일까지 [{date, weekday}] */
+/** 오늘부터 DAYS_AHEAD 일까지 (LAST_DATE 넘지 않게) [{date, weekday}] */
 function calendarDates_() {
   const out = [];
   const base = new Date();
   for (let i = 0; i <= CONFIG.DAYS_AHEAD; i++) {
     const d = new Date(base.getTime() + i * 86400000);
+    const date = Utilities.formatDate(d, tz_(), 'yyyy-MM-dd');
+    if (CONFIG.LAST_DATE && date > CONFIG.LAST_DATE) break;
     out.push({
-      date: Utilities.formatDate(d, tz_(), 'yyyy-MM-dd'),
+      date,
       weekday: Number(Utilities.formatDate(d, tz_(), 'u')) % 7, // u: 1=월 … 7=일
     });
   }
