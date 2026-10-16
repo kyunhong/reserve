@@ -165,3 +165,12 @@ tr.cancelled td { color: var(--booked); text-decoration: line-through; }
 }
 #conflictDialog { width: min(480px, calc(100vw - 32px)); }
 #conflictDialog p { color: var(--muted); font-size: .9rem; }
+
+/* 제목을 서버에서 받기 전 자리표시 */
+.skeleton:empty {
+  display: block; height: 1em; max-width: 16em; border-radius: 6px;
+  background: var(--line); animation: pulse 1.2s ease-in-out infinite;
+}
+p.skeleton:empty { max-width: 24em; margin-top: 8px; }
+@keyframes pulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .skeleton:empty { animation: none; } }

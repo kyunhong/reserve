@@ -3,16 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>매홀고 2-6 박홍균과 상담 예약</title>
+  <title>상담 예약</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1 id="title">매홀고 2-6 박홍균과 상담 예약</h1>
-      <p id="notice">비어 있는 시간을 눌러 예약하세요. 예약할 때 정한 비밀번호로 취소·변경할 수 있어요.</p>
+      <!-- 제목·안내 문구는 서버 설정에서 받아 채운다. 그 전에는 지난번에 받은 값, 처음이면 회색 자리표시 -->
+      <h1 id="title" class="skeleton"></h1>
+      <p id="notice" class="skeleton"></p>
+      <script>
+        try {
+          const t = localStorage.getItem('counsel-title');
+          const n = localStorage.getItem('counsel-notice');
+          if (t) { document.getElementById('title').textContent = t; document.title = t; }
+          if (n !== null) document.getElementById('notice').textContent = n;
+        } catch (e) {}
+      </script>
       <div class="demo" id="demoNote" hidden>데모 모드: 예약이 이 브라우저에만 저장됩니다. config.js 에 Apps Script URL 을 넣으면 실제로 동작합니다.</div>
     </header>
 
@@ -91,6 +100,6 @@
 
   <script src="config.js?v=5"></script>
   <script src="api.js?v=1"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

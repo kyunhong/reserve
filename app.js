@@ -60,6 +60,11 @@
       // 제목·안내 문구는 관리자 페이지 > 설정 에서 바꾼다
       if (data.title) { $('title').textContent = data.title; document.title = data.title; }
       if (data.notice != null) $('notice').textContent = data.notice;
+      // 다음에 열 때 바로 보여 주도록 기억 (index.html 의 인라인 스크립트가 읽음)
+      try {
+        if (data.title) localStorage.setItem('counsel-title', data.title);
+        if (data.notice != null) localStorage.setItem('counsel-notice', data.notice);
+      } catch {}
       renderCalendar();
     } catch (err) {
       $('calendar').innerHTML = `<div class="loading">${esc(err.message)}<br><button class="btn small" id="retry">다시 시도</button></div>`;
