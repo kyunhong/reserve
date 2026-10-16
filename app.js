@@ -148,7 +148,12 @@
   // ===================== 달력 =====================
   async function loadCalendar() {
     try {
-      state.data = await api('availability');
+      const data = await api('availability');
+      // config.js 의 LAST_DATE 이후와 EXCLUDE_DATES 날짜는 달력에서 뺀다
+      const last = CFG.LAST_DATE || '';
+      const excluded = CFG.EXCLUDE_DATES || [];
+      data.days = data.days.filter((d) => (!last || d.date <= last) && !excluded.includes(d.date));
+      state.data = data;
       renderCalendar();
     } catch (err) {
       $('calendar').innerHTML = `<div class="loading">${esc(err.message)}<br><button class="btn small" id="retry">다시 시도</button></div>`;
