@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>상담 예약</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --text: #1d2330;
+      --muted: #6b7385;
+      --line: #e3e6ec;
+      --primary: #2f6fed;
+      --primary-weak: #e8f0ff;
+      --open: #1f9d63;
+      --open-weak: #e6f6ee;
+      --booked: #9aa1ad;
+      --booked-weak: #eef0f3;
+      --danger: #d64545;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Pretendard, -apple-system, "Malgun Gothic", sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+    header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    header p { margin: 0; color: var(--muted); }
+    .demo {
+      margin-top: 12px; padding: 8px 12px; border-radius: 8px;
+      background: #fff6e0; color: #8a5a00; font-size: .9rem;
+    }
+    .tabs { display: flex; gap: 8px; margin: 20px 0 16px; }
+    .tab {
+      flex: 1; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: var(--card); font: inherit; font-weight: 600; cursor: pointer; color: var(--muted);
+    }
+    .tab[aria-selected="true"] { border-color: var(--primary); color: var(--primary); background: var(--primary-weak); }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: .85rem; color: var(--muted); margin-bottom: 12px; }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+    .banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; margin-bottom: 12px; border-radius: 8px; background: var(--primary-weak); color: var(--primary);
+      font-size: .95rem;
+    }
+    .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .dow { text-align: center; font-size: .85rem; font-weight: 600; color: var(--muted); padding-bottom: 2px; }
+    .day {
+      min-height: 84px; border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .day.blank { border-style: dashed; background: transparent; opacity: .4; }
+    .day.today { border-color: var(--primary); }
+    .day .date { font-size: .85rem; font-weight: 600; }
+    .day .note { font-size: .75rem; color: var(--danger); }
+    .slot {
+      width: 100%; border: 0; border-radius: 6px; padding: 6px 4px; font: inherit; font-size: .8rem;
+      cursor: pointer; line-height: 1.25;
+    }
+    .slot small { display: block; font-size: .7rem; opacity: .85; }
+    .slot.open { background: var(--open-weak); color: var(--open); font-weight: 600; }
+    .slot.open:hover { background: var(--open); color: #fff; }
+    .slot.booked, .slot.closed { background: var(--booked-weak); color: var(--booked); cursor: not-allowed; }
+    .slot.booked { text-decoration: line-through; }
+    .week + .week { margin-top: 6px; }
+    form .row { margin-bottom: 12px; }
+    label { display: block; font-size: .9rem; font-weight: 600; margin-bottom: 4px; }
+    input {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff;
+    }
+    input:focus { outline: 2px solid var(--primary-weak); border-color: var(--primary); }
+    .hint { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+    .btn {
+      padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font: inherit;
+      font-weight: 600; cursor: pointer;
+    }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn.danger { color: var(--danger); border-color: #f1c9c9; }
+    .btn.small { padding: 6px 10px; font-size: .85rem; }
+    .btn:disabled { opacity: .5; cursor: wait; }
+    .actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+    .list li {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+      border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+    }
+    .list .when { font-weight: 600; }
+    .list .who { font-size: .85rem; color: var(--muted); }
+    .msg { margin-top: 12px; font-size: .9rem; }
+    .msg.err { color: var(--danger); }
+    .msg.ok { color: var(--open); }
+    .loading { text-align: center; color: var(--muted); padding: 32px 0; }
+    dialog {
+      border: 0; border-radius: var(--radius); padding: 20px; width: min(420px, calc(100vw - 32px));
+      box-shadow: 0 20px 50px rgba(0,0,0,.2);
+    }
+    dialog::backdrop { background: rgba(20, 24, 33, .45); }
+    dialog h2 { margin: 0 0 4px; font-size: 1.2rem; }
+    dialog .picked { color: var(--primary); font-weight: 600; margin: 0 0 16px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 520px) {
+      .grid { gap: 4px; }
+      .day { padding: 4px; min-height: 72px; }
+      .slot { padding: 5px 2px; font-size: .72rem; }
+      .slot small { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1 id="title">상담 예약</h1>
+      <p>비어 있는 시간을 눌러 예약하세요. 예약할 때 정한 비밀번호로 취소·변경할 수 있어요.</p>
+      <div class="demo" id="demoNote" hidden>데모 모드: 예약이 이 브라우저에만 저장됩니다. config.js 에 Apps Script URL 을 넣으면 실제로 동작합니다.</div>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tabBook" aria-selected="true">예약하기</button>
+      <button class="tab" role="tab" id="tabMine" aria-selected="false">내 예약 확인 · 취소 · 변경</button>
+    </div>
+
+    <!-- 예약하기 -->
+    <section id="panelBook" class="card">
+      <div class="banner" id="modifyBanner" hidden>
+        <span id="modifyText"></span>
+        <button class="btn small" id="modifyStop">변경 그만두기</button>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--open)"></i>예약 가능</span>
+        <span><i style="background:var(--booked)"></i>예약 완료 · 마감</span>
+        <span id="slotInfo"></span>
+      </div>
+      <div id="calendar"><div class="loading">불러오는 중…</div></div>
+    </section>
+
+    <!-- 내 예약 -->
+    <section id="panelMine" class="card" hidden>
+      <form id="lookupForm" autocomplete="off">
+        <div class="row">
+          <label for="lkId">학번</label>
+          <input id="lkId" inputmode="numeric" maxlength="6" placeholder="예) 10101" required>
+        </div>
+        <div class="row">
+          <label for="lkPw">비밀번호</label>
+          <input id="lkPw" type="password" maxlength="20" required>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">예약 조회</button></div>
+      </form>
+      <div class="msg" id="lookupMsg"></div>
+      <ul class="list" id="myList"></ul>
+    </section>
+  </div>
+
+  <!-- 예약 입력 -->
+  <dialog id="bookDialog">
+    <form id="bookForm" autocomplete="off">
+      <h2>상담 예약</h2>
+      <p class="picked" id="bookPicked"></p>
+      <div class="row">
+        <label for="bkId">학번</label>
+        <input id="bkId" inputmode="numeric" maxlength="6" placeholder="예) 10101" required>
+      </div>
+      <div class="row">
+        <label for="bkName">이름</label>
+        <input id="bkName" maxlength="20" required>
+      </div>
+      <div class="row">
+        <label for="bkPw">비밀번호</label>
+        <input id="bkPw" type="password" maxlength="20" minlength="4" required>
+        <div class="hint">4자 이상. 예약을 취소하거나 바꿀 때 필요해요.</div>
+      </div>
+      <div class="msg err" id="bookMsg"></div>
+      <div class="actions">
+        <button class="btn" type="button" data-close>닫기</button>
+        <button class="btn primary" type="submit">예약하기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 확인 -->
+  <dialog id="confirmDialog">
+    <h2 id="confirmTitle"></h2>
+    <p id="confirmText"></p>
+    <div class="msg err" id="confirmMsg"></div>
+    <div class="actions">
+      <button class="btn" type="button" data-close>아니요</button>
+      <button class="btn primary" type="button" id="confirmOk">확인</button>
+    </div>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
