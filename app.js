@@ -1,5 +1,4 @@
 (() => {
-  const CFG = window.APP_CONFIG || {};
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
   const $ = (id) => document.getElementById(id);
 
@@ -10,99 +9,7 @@
     modifying: null,   // 변경 중인 예약
   };
 
-  // ===================== API =====================
-  async function remoteApi(action, params = {}) {
-    // Content-Type 을 지정하지 않아 text/plain 으로 전송 → CORS preflight 없이 Apps Script 호출 가능
-    const res = await fetch(CFG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, ...params }),
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || '요청에 실패했습니다.');
-    return json.data;
-  }
-
-  // config.js 에 API_URL 이 없을 때 쓰는 데모용 가짜 서버 (localStorage)
-  const mockApi = (() => {
-    // apps-script/Code.gs 의 CONFIG 와 같게 유지
-    const SLOTS = {
-      MORNING: { label: '아침', start: '08:20' },
-      LUNCH: { label: '점심시간', start: '13:30' },
-      AFTER_EARLY: { label: '방과후', start: '16:10' },
-      AFTER: { label: '방과후', start: '17:10' },
-    };
-    const DAY_SLOTS = {
-      1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-      2: ['MORNING', 'LUNCH', 'AFTER'],
-      3: ['MORNING', 'LUNCH', 'AFTER'],
-      4: ['MORNING', 'LUNCH', 'AFTER'],
-      5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-    };
-    const KEY = 'counsel-demo-bookings';
-    const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-    const save = (rows) => { try { localStorage.setItem(KEY, JSON.stringify(rows)); } catch {} };
-    const pad = (n) => String(n).padStart(2, '0');
-    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const nowHm = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-    const dates = () => Array.from({ length: 29 }, (_, i) => {
-      const d = new Date(); d.setDate(d.getDate() + i);
-      return { date: fmt(d), weekday: d.getDay() };
-    });
-    const fail = (m) => { throw new Error(m); };
-    const check = (date, slot, rows, exceptId) => {
-      const day = dates().find((d) => d.date === date) || fail('예약할 수 없는 날짜입니다.');
-      if (!(DAY_SLOTS[day.weekday] || []).includes(slot)) fail('해당 요일에는 그 시간대 상담이 없습니다.');
-      if (date === fmt(new Date()) && nowHm() >= SLOTS[slot].start) fail('이미 지난 시간대입니다.');
-      if (rows.some((r) => r.status === '예약' && r.date === date && r.slot === slot && r.id !== exceptId)) {
-        fail('이미 예약된 시간입니다. 다른 시간을 선택해 주세요.');
-      }
-    };
-    const mine = (p, rows) => {
-      const list = rows.filter((r) => r.studentId === String(p.studentId).trim() && r.password === p.password
-        && r.status === '예약' && r.date >= fmt(new Date()));
-      if (!list.length) fail('학번과 비밀번호가 일치하는 예약이 없습니다.');
-      return list.sort((a, b) => (a.date + SLOTS[a.slot].start).localeCompare(b.date + SLOTS[b.slot].start));
-    };
-    const handlers = {
-      availability() {
-        const rows = load(); const today = fmt(new Date());
-        const days = dates().map((d) => ({
-          date: d.date, weekday: d.weekday, holiday: null,
-          slots: (DAY_SLOTS[d.weekday] || []).map((key) => ({
-            key,
-            status: d.date === today && nowHm() >= SLOTS[key].start ? 'closed'
-              : rows.some((r) => r.status === '예약' && r.date === d.date && r.slot === key) ? 'booked' : 'open',
-          })),
-        })).filter((d) => d.slots.length);
-        return { today, slots: SLOTS, days };
-      },
-      book(p) {
-        if (!/^\d{4,6}$/.test(String(p.studentId).trim())) fail('학번은 숫자 4~6자리로 입력해 주세요.');
-        if (!/^[가-힣a-zA-Z ]{1,20}$/.test(String(p.name).trim())) fail('이름은 한글/영문 20자 이내로 입력해 주세요.');
-        if (String(p.password).length < 4) fail('비밀번호는 4~20자로 입력해 주세요.');
-        const rows = load(); check(p.date, p.slot, rows, null);
-        const id = Math.random().toString(36).slice(2, 12);
-        rows.push({ id, date: p.date, slot: p.slot, studentId: String(p.studentId).trim(), name: String(p.name).trim(),
-          password: p.password, status: '예약' });
-        save(rows); return { id };
-      },
-      myBookings(p) { return mine(p, load()); },
-      cancel(p) {
-        const rows = load(); const t = mine(p, rows).find((r) => r.id === p.id) || fail('예약을 찾을 수 없습니다.');
-        t.status = '취소'; save(rows); return { id: t.id };
-      },
-      modify(p) {
-        const rows = load(); const t = mine(p, rows).find((r) => r.id === p.id) || fail('예약을 찾을 수 없습니다.');
-        check(p.date, p.slot, rows, t.id); t.date = p.date; t.slot = p.slot; save(rows); return { id: t.id };
-      },
-    };
-    return async (action, params = {}) => {
-      await new Promise((r) => setTimeout(r, 200));
-      return handlers[action](params);
-    };
-  })();
-
-  const api = CFG.API_URL ? remoteApi : mockApi;
+  const api = window.CounselApi.call;
 
   // ===================== 표시 도우미 =====================
   const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -149,11 +56,10 @@
   async function loadCalendar() {
     try {
       const data = await api('availability');
-      // config.js 의 LAST_DATE 이후와 EXCLUDE_DATES 날짜는 달력에서 뺀다
-      const last = CFG.LAST_DATE || '';
-      const excluded = CFG.EXCLUDE_DATES || [];
-      data.days = data.days.filter((d) => (!last || d.date <= last) && !excluded.includes(d.date));
       state.data = data;
+      // 제목·안내 문구는 관리자 페이지 > 설정 에서 바꾼다
+      if (data.title) { $('title').textContent = data.title; document.title = data.title; }
+      if (data.notice != null) $('notice').textContent = data.notice;
       renderCalendar();
     } catch (err) {
       $('calendar').innerHTML = `<div class="loading">${esc(err.message)}<br><button class="btn small" id="retry">다시 시도</button></div>`;
@@ -317,7 +223,6 @@
   $('modifyStop').addEventListener('click', () => { stopModify(); showTab('mine'); });
 
   // ===================== 시작 =====================
-  if (CFG.TITLE) { $('title').textContent = CFG.TITLE; document.title = CFG.TITLE; }
-  $('demoNote').hidden = !!CFG.API_URL;
+  $('demoNote').hidden = !window.CounselApi.isDemo;
   loadCalendar();
 })();

@@ -1,59 +1,12 @@
 (() => {
-  const CFG = window.APP_CONFIG || {};
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
   const PW_KEY = 'counsel-admin-pw';
   const VIEW_KEY = 'counsel-admin-view';
   const $ = (id) => document.getElementById(id);
-  const state = { password: null, avail: null, rows: [], view: 'calendar' };
+  const state = { password: null, avail: null, rows: [], view: 'calendar', settings: null };
+  const DAY_NAMES = ['월', '화', '수', '목', '금'];
 
-  async function remoteApi(action, params = {}) {
-    const res = await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ action, ...params }) });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || '요청에 실패했습니다.');
-    return json.data;
-  }
-
-  // 데모 모드: 예약 화면(app.js)이 localStorage 에 저장한 데모 예약을 그대로 보여줌
-  async function demoApi(action, params = {}) {
-    // apps-script/Code.gs 의 CONFIG 와 같게 유지
-    const SLOTS = {
-      MORNING: { label: '아침', start: '08:20' },
-      LUNCH: { label: '점심시간', start: '13:30' },
-      AFTER_EARLY: { label: '방과후', start: '16:10' },
-      AFTER: { label: '방과후', start: '17:10' },
-    };
-    const DAY_SLOTS = {
-      1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-      2: ['MORNING', 'LUNCH', 'AFTER'],
-      3: ['MORNING', 'LUNCH', 'AFTER'],
-      4: ['MORNING', 'LUNCH', 'AFTER'],
-      5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-    };
-    const now = new Date();
-    const today = fmt(now);
-    const nowHm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    if (action === 'availability') {
-      const days = Array.from({ length: 29 }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() + i);
-        const date = fmt(d);
-        return {
-          date, weekday: d.getDay(), holiday: null,
-          slots: (DAY_SLOTS[d.getDay()] || []).map((key) => ({
-            key, status: date === today && nowHm >= SLOTS[key].start ? 'closed' : 'open',
-          })),
-        };
-      }).filter((d) => d.slots.length);
-      return { today, slots: SLOTS, days };
-    }
-    let rows = [];
-    try { rows = JSON.parse(localStorage.getItem('counsel-demo-bookings')) || []; } catch {}
-    return rows
-      .filter((r) => params.all || (r.status === '예약' && r.date >= today))
-      .map(({ password, ...r }) => ({ createdAt: '', updatedAt: '', ...r }))
-      .sort((a, b) => (a.date + SLOTS[a.slot].start).localeCompare(b.date + SLOTS[b.slot].start));
-  }
-
-  const api = CFG.API_URL ? remoteApi : demoApi;
+  const api = window.CounselApi.call;
 
   const store = {
     get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
@@ -71,7 +24,10 @@
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
       if (k === 'class') node.className = v;
-      else node.setAttribute(k, v);
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else if (k === 'value') node.value = v;
+      else if (k === 'checked') node.checked = v;
+      else if (v !== false && v != null) node.setAttribute(k, v === true ? '' : v);
     }
     for (const c of children) if (c != null) node.append(c);
     return node;
@@ -85,10 +41,6 @@
         api('availability'),
         api('adminList', { adminPassword: state.password, all: $('showAll').checked }),
       ]);
-      // config.js 의 LAST_DATE 이후와 EXCLUDE_DATES 날짜는 학생 화면과 똑같이 달력에서 뺀다
-      const last = CFG.LAST_DATE || '';
-      const excluded = CFG.EXCLUDE_DATES || [];
-      if (avail.days) avail.days = avail.days.filter((d) => (!last || d.date <= last) && !excluded.includes(d.date));
       state.avail = avail;
       state.rows = rows;
       render();
@@ -102,11 +54,18 @@
   }
 
   function render() {
-    const calendar = state.view === 'calendar';
-    $('viewCalendar').setAttribute('aria-pressed', calendar);
-    $('viewList').setAttribute('aria-pressed', !calendar);
-    $('showAllWrap').hidden = calendar;
-    if (calendar) renderCalendar(); else renderList();
+    const { view } = state;
+    $('viewCalendar').setAttribute('aria-pressed', view === 'calendar');
+    $('viewList').setAttribute('aria-pressed', view === 'list');
+    $('viewSettings').setAttribute('aria-pressed', view === 'settings');
+    $('showAllWrap').hidden = view !== 'list';
+    $('refresh').hidden = view === 'settings';
+    $('summary').hidden = view === 'settings';
+    $('list').hidden = view === 'settings';
+    $('settingsPanel').hidden = view !== 'settings';
+    if (view === 'calendar') renderCalendar();
+    else if (view === 'list') renderList();
+    else if (!state.settings) loadSettings();
   }
 
   // ===================== 달력 보기 =====================
@@ -198,6 +157,128 @@
     }
   }
 
+  // ===================== 설정 =====================
+  async function loadSettings() {
+    setStMsg('불러오는 중…', '');
+    try {
+      state.settings = await api('adminGetSettings', { adminPassword: state.password });
+      fillSettings(state.settings);
+      setStMsg('', '');
+    } catch (err) {
+      setStMsg(err.message);
+    }
+  }
+
+  function setStMsg(text, kind = 'err') {
+    $('stMsg').className = `msg ${kind}`;
+    $('stMsg').textContent = text;
+  }
+
+  function fillSettings(st) {
+    $('stTitle').value = st.title || '';
+    $('stNotice').value = st.notice || '';
+    $('stDaysAhead').value = st.daysAhead;
+    $('stLastDate').value = st.lastDate || '';
+    $('stSlots').innerHTML = '';
+    st.slots.forEach(addSlotRow);
+    $('stClosed').innerHTML = '';
+    st.closedDates.forEach(addClosedRow);
+  }
+
+  function addSlotRow(s = { key: '', label: '', start: '', days: [1, 2, 3, 4, 5] }) {
+    const tr = el('tr', { 'data-key': s.key || '' },
+      el('td', {}, el('input', { class: 'st-label', value: s.label, maxlength: 20, placeholder: '예) 점심시간', 'aria-label': '시간대 이름' })),
+      el('td', {}, el('input', { class: 'st-start', type: 'time', value: s.start, 'aria-label': '시작 시각' })),
+      ...DAY_NAMES.map((name, i) => el('td', { class: 'center' },
+        el('input', { type: 'checkbox', class: 'st-day', value: i + 1, checked: s.days.includes(i + 1), 'aria-label': `${name}요일` }))),
+      el('td', {}, el('button', { type: 'button', class: 'btn small danger', onclick: () => tr.remove() }, '삭제')));
+    $('stSlots').append(tr);
+    return tr;
+  }
+
+  function addClosedRow(c = { date: '', reason: '' }) {
+    const tr = el('tr', {},
+      el('td', {}, el('input', { class: 'st-date', type: 'date', value: c.date, 'aria-label': '날짜' })),
+      el('td', {}, el('input', { class: 'st-reason', value: c.reason, maxlength: 30, placeholder: '예) 모의고사', 'aria-label': '사유' })),
+      el('td', {}, el('button', { type: 'button', class: 'btn small danger', onclick: () => tr.remove() }, '삭제')));
+    $('stClosed').append(tr);
+    return tr;
+  }
+
+  function collectSettings() {
+    return {
+      title: $('stTitle').value.trim(),
+      notice: $('stNotice').value.trim(),
+      daysAhead: Number($('stDaysAhead').value),
+      lastDate: $('stLastDate').value,
+      slots: [...$('stSlots').rows].map((tr) => ({
+        key: tr.dataset.key,
+        label: tr.querySelector('.st-label').value.trim(),
+        start: tr.querySelector('.st-start').value,
+        days: [...tr.querySelectorAll('.st-day')].filter((c) => c.checked).map((c) => Number(c.value)),
+      })),
+      closedDates: [...$('stClosed').rows]
+        .map((tr) => ({ date: tr.querySelector('.st-date').value, reason: tr.querySelector('.st-reason').value.trim() }))
+        .filter((c) => c.date),
+    };
+  }
+
+  async function saveSettings(confirmCancel) {
+    const settings = collectSettings();
+    const res = await api('adminSaveSettings', { adminPassword: state.password, settings, confirmCancel });
+    if (!res.saved) {
+      $('conflictList').innerHTML = '';
+      for (const c of res.conflicts) {
+        $('conflictList').append(el('li', {},
+          el('div', {}, el('div', { class: 'when' }, `${dateLabel(c.date)} ${c.slotText}`),
+            el('div', { class: 'who' }, `${c.studentId} ${c.name}`))));
+      }
+      $('conflictMsg').textContent = '';
+      $('conflictDialog').showModal();
+      return;
+    }
+    state.settings = res.settings;
+    fillSettings(res.settings);
+    setStMsg(res.cancelled
+      ? `저장했습니다. 예약 ${res.cancelled}건이 취소되었습니다. 학생 화면에 바로 반영됩니다.`
+      : '저장했습니다. 학생 화면에 바로 반영됩니다.', 'ok');
+    load(); // 달력·목록도 새 설정으로
+  }
+
+  $('settingsPanel').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('settingsPanel').querySelector('[type=submit]');
+    btn.disabled = true;
+    setStMsg('저장하는 중…', '');
+    try {
+      await saveSettings(false);
+      if ($('conflictDialog').open) setStMsg('', '');
+    } catch (err) {
+      setStMsg(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('conflictOk').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await saveSettings(true);
+      $('conflictDialog').close();
+    } catch (err) {
+      $('conflictMsg').textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+
+  $('addSlot').addEventListener('click', () => addSlotRow().querySelector('.st-label').focus());
+  $('addClosed').addEventListener('click', () => addClosedRow().querySelector('.st-date').focus());
+  $('clearLastDate').addEventListener('click', () => { $('stLastDate').value = ''; });
+  $('stReset').addEventListener('click', () => { state.settings = null; loadSettings(); });
+
   // ===================== 이벤트 =====================
   function showList(on) {
     $('loginCard').hidden = on;
@@ -227,18 +308,20 @@
   }
   $('viewCalendar').addEventListener('click', () => setView('calendar'));
   $('viewList').addEventListener('click', () => setView('list'));
+  $('viewSettings').addEventListener('click', () => setView('settings'));
   $('refresh').addEventListener('click', load);
   $('showAll').addEventListener('change', load);
   $('logout').addEventListener('click', () => {
     store.clear(PW_KEY);
     state.password = null;
+    state.settings = null;
     $('adminPw').value = '';
     $('loginMsg').textContent = '';
     showList(false);
   });
 
-  $('demoNote').hidden = !!CFG.API_URL;
-  state.view = store.get(VIEW_KEY) === 'list' ? 'list' : 'calendar';
+  $('demoNote').hidden = !window.CounselApi.isDemo;
+  state.view = ['list', 'settings'].includes(store.get(VIEW_KEY)) ? store.get(VIEW_KEY) : 'calendar';
   const saved = store.get(PW_KEY);
   if (saved) {
     state.password = saved;

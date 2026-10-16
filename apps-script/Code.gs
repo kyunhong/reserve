@@ -7,32 +7,34 @@
  */
 
 // ===================== 설정 =====================
+// 시간대·요일·기간·휴무일·제목은 관리자 페이지 > 설정 에서 바꿉니다 (스크립트 속성 SETTINGS 에 저장).
+// 아래 DEFAULT_SETTINGS 는 아직 한 번도 저장하지 않았을 때 쓰는 처음 값입니다.
 const CONFIG = {
   SHEET_NAME: '예약',
   HOLIDAY_SHEET_NAME: '휴무일',
-  DAYS_AHEAD: 28, // 오늘부터 며칠 뒤까지 예약을 받을지
-  LAST_DATE: '2026-11-06', // 이 날짜 이후 예약은 서버에서도 거절 (config.js 의 LAST_DATE 와 같게, 제한 없으면 '')
-
-  // 시간대 정의 (start 는 HH:mm). 같은 날 시작 시각이 지나면 예약 마감.
-  SLOTS: {
-    MORNING: { label: '아침', start: '08:20' },
-    LUNCH: { label: '점심시간', start: '13:30' },
-    AFTER_EARLY: { label: '방과후', start: '16:10' },
-    AFTER: { label: '방과후', start: '17:10' },
-  },
-
-  // 요일별 가능한 시간대, 하루에 여러 개 가능 (0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토)
-  DAY_SLOTS: {
-    1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-    2: ['MORNING', 'LUNCH', 'AFTER'],
-    3: ['MORNING', 'LUNCH', 'AFTER'],
-    4: ['MORNING', 'LUNCH', 'AFTER'],
-    5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
-  },
+  SETTINGS_KEY: 'SETTINGS',
 
   // 비밀번호를 연속으로 틀리면 잠시 조회를 막음
   MAX_FAILS: 5,
   LOCK_MINUTES: 10,
+};
+
+const DEFAULT_SETTINGS = {
+  title: '매홀고 2-6 박홍균과 상담 예약',
+  notice: '비어 있는 시간을 눌러 예약하세요. 예약할 때 정한 비밀번호로 취소·변경할 수 있어요.',
+  daysAhead: 28, // 오늘부터 며칠 뒤까지 예약을 받을지
+  lastDate: '2026-11-06', // 이 날짜까지만 상담 ('' 이면 제한 없음)
+  // 시간대: days 는 요일 (1=월 … 5=금). start 시각이 지나면 그날 예약 마감.
+  slots: [
+    { key: 'MORNING', label: '아침', start: '08:20', days: [1, 2, 3, 4, 5] },
+    { key: 'LUNCH', label: '점심시간', start: '13:30', days: [1, 2, 3, 4, 5] },
+    { key: 'AFTER_EARLY', label: '방과후', start: '16:10', days: [1, 5] },
+    { key: 'AFTER', label: '방과후', start: '17:10', days: [2, 3, 4] },
+  ],
+  // 예약을 받지 않는 날 (시트의 '휴무일' 탭에 적은 날도 함께 적용)
+  closedDates: [
+    { date: '2026-10-20', reason: '모의고사' },
+  ],
 };
 
 const HEADERS = ['예약ID', '날짜', '요일', '시간대', '학번', '이름', '상태',
@@ -71,6 +73,8 @@ const ACTIONS = {
   cancel: apiCancel_,
   modify: apiModify_,
   adminList: apiAdminList_,
+  adminGetSettings: apiAdminGetSettings_,
+  adminSaveSettings: apiAdminSaveSettings_,
 };
 
 function handle_(p) {
@@ -102,8 +106,10 @@ function apiAvailability_() {
   const holidays = holidays_();
   const { today, nowHm } = now_();
 
-  const days = calendarDates_().map(d => {
-    const keys = CONFIG.DAY_SLOTS[d.weekday] || [];
+  const st = settings_();
+  const slotMap = slotMap_(st);
+  const days = calendarDates_(st).map(d => {
+    const keys = daySlots_(st, d.weekday);
     const holiday = holidays[d.date] || null;
     return {
       date: d.date,
@@ -112,14 +118,14 @@ function apiAvailability_() {
       slots: keys.map(key => {
         let status = 'open';
         if (holiday) status = 'closed';
-        else if (d.date === today && nowHm >= CONFIG.SLOTS[key].start) status = 'closed';
+        else if (d.date === today && nowHm >= slotMap[key].start) status = 'closed';
         else if (booked.has(d.date + '|' + key)) status = 'booked';
         return { key, status };
       }),
     };
   }).filter(d => d.slots.length > 0);
 
-  return { today, slots: CONFIG.SLOTS, days };
+  return { today, title: st.title, notice: st.notice, slots: slotMap, days };
 }
 
 function apiBook_(p) {
@@ -198,6 +204,127 @@ function apiAdminList_(p) {
     }));
 }
 
+/** 관리자: 현재 설정 */
+function apiAdminGetSettings_(p) {
+  verifyAdmin_(p.adminPassword);
+  return settings_();
+}
+
+/**
+ * 관리자: 설정 저장.
+ * 바꾼 설정 때문에 달력에서 사라지는 다가오는 예약이 있으면 저장하지 않고 그 목록을 돌려준다.
+ * confirmCancel=true 로 다시 보내면 그 예약들을 취소하고 저장한다.
+ */
+function apiAdminSaveSettings_(p) {
+  verifyAdmin_(p.adminPassword);
+  const next = normalizeSettings_(p.settings || {}, true);
+  return withLock_(() => {
+    const { today } = now_();
+    const closed = {};
+    next.closedDates.forEach(c => { closed[c.date] = true; });
+    const conflicts = rows_().filter(r => {
+      if (r.status !== ACTIVE || r.date < today) return false;
+      const s = next.slots.find(x => x.key === r.slot);
+      return !s || !s.days.includes(weekdayOf_(r.date)) ||
+        Boolean(next.lastDate && r.date > next.lastDate) || Boolean(closed[r.date]);
+    });
+    if (conflicts.length && !p.confirmCancel) {
+      const old = slotMap_(settings_());
+      return {
+        saved: false,
+        conflicts: conflicts.map(r => Object.assign(publicView_(r), {
+          slotText: old[r.slot] ? old[r.slot].label + ' ' + old[r.slot].start + '~' : r.slot,
+        })),
+      };
+    }
+    const sh = sheet_();
+    conflicts.forEach(r => {
+      sh.getRange(r.row, COL['상태']).setValue(CANCELLED);
+      sh.getRange(r.row, COL['수정일시']).setValue(stamp_() + ' (설정 변경으로 취소)');
+    });
+    PropertiesService.getScriptProperties().setProperty(CONFIG.SETTINGS_KEY, JSON.stringify(next));
+    settingsCache_ = next;
+    return { saved: true, cancelled: conflicts.length, settings: next };
+  });
+}
+
+// ===================== 설정 =====================
+let settingsCache_ = null;
+
+function settings_() {
+  if (settingsCache_) return settingsCache_;
+  const raw = PropertiesService.getScriptProperties().getProperty(CONFIG.SETTINGS_KEY);
+  let parsed = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch (err) { console.error(err); }
+  settingsCache_ = normalizeSettings_(parsed || DEFAULT_SETTINGS, false);
+  return settingsCache_;
+}
+
+/** 설정 값 검사·정리. strict=true 면 잘못된 값에 오류를 낸다 (관리자 저장 시). */
+function normalizeSettings_(input, strict) {
+  const bad = (msg) => { if (strict) throw new UserError(msg); };
+  const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+  const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00'));
+
+  const title = str(input.title, 60) || DEFAULT_SETTINGS.title;
+  const notice = str(input.notice, 200);
+
+  let daysAhead = Number(input.daysAhead);
+  if (!Number.isInteger(daysAhead) || daysAhead < 1 || daysAhead > 180) {
+    bad('예약 받는 기간은 1~180일 사이로 입력해 주세요.');
+    daysAhead = DEFAULT_SETTINGS.daysAhead;
+  }
+
+  let lastDate = str(input.lastDate, 10);
+  if (lastDate && !isDate(lastDate)) { bad('마지막 상담 날짜를 다시 확인해 주세요.'); lastDate = ''; }
+
+  const keys = {};
+  const slots = [];
+  (Array.isArray(input.slots) ? input.slots : []).forEach((x, i) => {
+    const label = str(x && x.label, 20);
+    const start = str(x && x.start, 5);
+    const days = [...new Set((Array.isArray(x && x.days) ? x.days : []).map(Number))]
+      .filter(d => d >= 1 && d <= 5).sort();
+    if (!label) return bad((i + 1) + '번째 시간대의 이름을 입력해 주세요.');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)) return bad(label + ' 시간대의 시작 시각을 다시 확인해 주세요.');
+    let key = str(x && x.key, 20);
+    if (!/^[A-Za-z0-9_]+$/.test(key) || keys[key]) key = 'S' + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+    keys[key] = true;
+    slots.push({ key, label, start, days });
+  });
+  if (!slots.length) {
+    bad('상담 시간대를 하나 이상 만들어 주세요.');
+    return normalizeSettings_(DEFAULT_SETTINGS, false);
+  }
+  slots.sort((a, b) => a.start.localeCompare(b.start));
+
+  const seen = {};
+  const closedDates = [];
+  (Array.isArray(input.closedDates) ? input.closedDates : []).forEach(c => {
+    const date = str(c && c.date, 10);
+    if (!date) return;
+    if (!isDate(date)) return bad('휴무일 날짜를 다시 확인해 주세요: ' + date);
+    if (seen[date]) return;
+    seen[date] = true;
+    closedDates.push({ date, reason: str(c.reason, 30) || '휴무' });
+  });
+  closedDates.sort((a, b) => a.date.localeCompare(b.date));
+
+  return { title, notice, daysAhead, lastDate, slots, closedDates };
+}
+
+/** { key: { label, start } } */
+function slotMap_(st) {
+  const map = {};
+  st.slots.forEach(s => { map[s.key] = { label: s.label, start: s.start }; });
+  return map;
+}
+
+/** 해당 요일에 열리는 시간대 key 목록 (시작 시각 순) */
+function daySlots_(st, weekday) {
+  return st.slots.filter(s => s.days.includes(weekday)).map(s => s.key);
+}
+
 // ===================== 검증 =====================
 function cleanStudentId_(v) {
   const s = String(v || '').trim();
@@ -219,15 +346,17 @@ function cleanPassword_(v) {
 
 /** 예약 가능한 날짜·시간대인지, 이미 찬 자리인지 확인 (exceptId: 수정 중인 본인 예약) */
 function assertSlotAvailable_(date, slot, rows, exceptId) {
-  if (!CONFIG.SLOTS[slot]) throw new UserError('시간대를 다시 선택해 주세요.');
-  const day = calendarDates_().find(d => d.date === date);
+  const st = settings_();
+  const slotMap = slotMap_(st);
+  if (!slotMap[slot]) throw new UserError('시간대를 다시 선택해 주세요.');
+  const day = calendarDates_(st).find(d => d.date === date);
   if (!day) throw new UserError('예약할 수 없는 날짜입니다.');
-  if (!(CONFIG.DAY_SLOTS[day.weekday] || []).includes(slot)) {
+  if (!daySlots_(st, day.weekday).includes(slot)) {
     throw new UserError(WEEKDAYS[day.weekday] + '요일에는 해당 시간대 상담이 없습니다.');
   }
   if (holidays_()[date]) throw new UserError('휴무일에는 예약할 수 없습니다.');
   const { today, nowHm } = now_();
-  if (date === today && nowHm >= CONFIG.SLOTS[slot].start) {
+  if (date === today && nowHm >= slotMap[slot].start) {
     throw new UserError('이미 지난 시간대입니다.');
   }
   const taken = rows.some(r => r.status === ACTIVE && r.date === date && r.slot === slot && r.id !== exceptId);
@@ -323,11 +452,12 @@ function rows_() {
   }));
 }
 
-/** { 'yyyy-MM-dd': '사유' } */
+/** { 'yyyy-MM-dd': '사유' } — 설정의 휴무일 + 시트 '휴무일' 탭 */
 function holidays_() {
+  const map = {};
+  settings_().closedDates.forEach(c => { map[c.date] = c.reason; });
   const sh = holidaySheet_();
   const n = sh.getLastRow() - 1;
-  const map = {};
   if (n <= 0) return map;
   sh.getRange(2, 1, n, 2).getValues().forEach(([d, reason]) => {
     const date = toDateStr_(d);
@@ -353,14 +483,14 @@ function now_() {
 
 function stamp_() { return Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'); }
 
-/** 오늘부터 DAYS_AHEAD 일까지 (LAST_DATE 넘지 않게) [{date, weekday}] */
-function calendarDates_() {
+/** 오늘부터 daysAhead 일까지 (lastDate 넘지 않게) [{date, weekday}] */
+function calendarDates_(st) {
   const out = [];
   const base = new Date();
-  for (let i = 0; i <= CONFIG.DAYS_AHEAD; i++) {
+  for (let i = 0; i <= st.daysAhead; i++) {
     const d = new Date(base.getTime() + i * 86400000);
     const date = Utilities.formatDate(d, tz_(), 'yyyy-MM-dd');
-    if (CONFIG.LAST_DATE && date > CONFIG.LAST_DATE) break;
+    if (st.lastDate && date > st.lastDate) break;
     out.push({
       date,
       weekday: Number(Utilities.formatDate(d, tz_(), 'u')) % 7, // u: 1=월 … 7=일
@@ -380,12 +510,12 @@ function toDateStr_(v) {
 }
 
 function slotText_(key) {
-  const s = CONFIG.SLOTS[key];
+  const s = slotMap_(settings_())[key];
   return s.label + ' (' + s.start + '~)';
 }
 
 function sortKey_(r) {
-  const s = CONFIG.SLOTS[r.slot];
+  const s = slotMap_(settings_())[r.slot];
   return r.date + ' ' + (s ? s.start : r.slot);
 }
 

@@ -144,3 +144,24 @@ tr.cancelled td { color: var(--booked); text-decoration: line-through; }
   .admin-cal .day.blank { display: none; }
 }
 .wrap.wide { max-width: 1200px; }
+
+/* 관리자 설정 */
+.settings h2 { font-size: 1.05rem; margin: 24px 0 8px; }
+.settings h2:first-child { margin-top: 4px; }
+.settings .hint { margin: 0 0 8px; }
+.inline-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.inline-row label { margin: 0; }
+.inline-row input { width: auto; }
+.inline-row input[type=number] { width: 90px; }
+.st-table { margin-bottom: 8px; }
+.st-table td { padding: 6px; }
+.st-table input { padding: 6px 8px; }
+.st-table .st-label, .st-table .st-reason { min-width: 120px; }
+.st-table .center { text-align: center; }
+.st-table input[type=checkbox] { width: 18px; height: 18px; }
+.sticky-actions {
+  position: sticky; bottom: 0; background: var(--card); padding: 12px 0 4px; margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+#conflictDialog { width: min(480px, calc(100vw - 32px)); }
+#conflictDialog p { color: var(--muted); font-size: .9rem; }
