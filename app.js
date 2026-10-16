@@ -176,9 +176,9 @@
         const key = fmt(d);
         const info = byDate[key];
         const label = `${d.getMonth() + 1}/${d.getDate()}`;
-        if (!info) { week.append(el('div', { class: 'day blank' }, el('span', { class: 'date' }, label))); continue; }
+        // '휴무일' 탭에 적힌 날은 선택할 시간대 없이 빈칸으로 둔다
+        if (!info || info.holiday) { week.append(el('div', { class: 'day blank' }, el('span', { class: 'date' }, label))); continue; }
         const cell = el('div', { class: 'day' + (key === today ? ' today' : '') }, el('span', { class: 'date' }, label));
-        if (info.holiday) cell.append(el('span', { class: 'note' }, info.holiday));
         for (const s of info.slots) {
           const meta = slots[s.key];
           const text = s.status === 'open' ? meta.label : s.status === 'booked' ? '예약됨' : '마감';
