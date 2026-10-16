@@ -12,20 +12,21 @@ const CONFIG = {
   HOLIDAY_SHEET_NAME: '휴무일',
   DAYS_AHEAD: 28, // 오늘부터 며칠 뒤까지 예약을 받을지
 
-  // 시간대 정의 (start/end 는 HH:mm). 같은 날 시작 시각이 지나면 예약 마감.
+  // 시간대 정의 (start 는 HH:mm). 같은 날 시작 시각이 지나면 예약 마감.
   SLOTS: {
-    LUNCH: { label: '점심시간', start: '12:40', end: '13:30' },
-    AFTER: { label: '방과후', start: '16:30', end: '17:30' },
+    MORNING: { label: '아침', start: '08:20' },
+    LUNCH: { label: '점심시간', start: '13:30' },
+    AFTER_EARLY: { label: '방과후', start: '16:10' },
+    AFTER: { label: '방과후', start: '17:10' },
   },
 
-  // 요일별 가능한 시간대 (0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토)
-  // 예) 방과후를 모든 요일에 열려면 1: ['LUNCH', 'AFTER'] 처럼 추가
+  // 요일별 가능한 시간대, 하루에 여러 개 가능 (0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토)
   DAY_SLOTS: {
-    1: ['LUNCH'],
-    2: ['AFTER'],
-    3: ['LUNCH'],
-    4: ['LUNCH'],
-    5: ['LUNCH'],
+    1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
+    2: ['MORNING', 'AFTER'],
+    3: ['MORNING', 'LUNCH', 'AFTER'],
+    4: ['MORNING', 'LUNCH', 'AFTER'],
+    5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
   },
 
   // 비밀번호를 연속으로 틀리면 잠시 조회를 막음
@@ -68,6 +69,7 @@ const ACTIONS = {
   myBookings: apiMyBookings_,
   cancel: apiCancel_,
   modify: apiModify_,
+  adminList: apiAdminList_,
 };
 
 function handle_(p) {
@@ -183,6 +185,18 @@ function apiModify_(p) {
   });
 }
 
+/** 관리자: 예약 목록. all=true 면 취소·지난 예약도 포함 */
+function apiAdminList_(p) {
+  verifyAdmin_(p.adminPassword);
+  const { today } = now_();
+  return rows_()
+    .filter(r => p.all || (r.status === ACTIVE && r.date >= today))
+    .sort((a, b) => sortKey_(a).localeCompare(sortKey_(b)))
+    .map(r => Object.assign(publicView_(r), {
+      status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt,
+    }));
+}
+
 // ===================== 검증 =====================
 function cleanStudentId_(v) {
   const s = String(v || '').trim();
@@ -238,7 +252,23 @@ function verify_(studentIdRaw, password, rows) {
     throw new UserError('학번과 비밀번호가 일치하는 예약이 없습니다.');
   }
   cache.remove(key);
-  return mine.sort((a, b) => (a.date + a.slot).localeCompare(b.date + b.slot));
+  return mine.sort((a, b) => sortKey_(a).localeCompare(sortKey_(b)));
+}
+
+/** 관리자 비밀번호는 코드가 아니라 스크립트 속성 ADMIN_PASSWORD 에 저장 (README 참고) */
+function verifyAdmin_(password) {
+  const expected = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD');
+  if (!expected) throw new UserError('관리자 비밀번호가 설정되지 않았습니다. (스크립트 속성 ADMIN_PASSWORD)');
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('fail_admin') || 0);
+  if (fails >= CONFIG.MAX_FAILS) {
+    throw new UserError('비밀번호를 여러 번 틀려 ' + CONFIG.LOCK_MINUTES + '분 동안 접속할 수 없습니다.');
+  }
+  if (String(password || '') !== expected) {
+    cache.put('fail_admin', String(fails + 1), CONFIG.LOCK_MINUTES * 60);
+    throw new UserError('관리자 비밀번호가 틀렸습니다.');
+  }
+  cache.remove('fail_admin');
 }
 
 function findMine_(p) {
@@ -287,6 +317,8 @@ function rows_() {
     status: String(r[COL['상태'] - 1]),
     hash: String(r[COL['비번해시'] - 1]),
     salt: String(r[COL['솔트'] - 1]),
+    createdAt: String(r[COL['신청일시'] - 1]),
+    updatedAt: String(r[COL['수정일시'] - 1]),
   }));
 }
 
@@ -346,7 +378,12 @@ function toDateStr_(v) {
 
 function slotText_(key) {
   const s = CONFIG.SLOTS[key];
-  return s.label + ' (' + s.start + '~' + s.end + ')';
+  return s.label + ' (' + s.start + '~)';
+}
+
+function sortKey_(r) {
+  const s = CONFIG.SLOTS[r.slot];
+  return r.date + ' ' + (s ? s.start : r.slot);
 }
 
 function hash_(password, salt) {

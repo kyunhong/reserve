@@ -24,11 +24,20 @@
 
   // config.js 에 API_URL 이 없을 때 쓰는 데모용 가짜 서버 (localStorage)
   const mockApi = (() => {
+    // apps-script/Code.gs 의 CONFIG 와 같게 유지
     const SLOTS = {
-      LUNCH: { label: '점심시간', start: '12:40', end: '13:30' },
-      AFTER: { label: '방과후', start: '16:30', end: '17:30' },
+      MORNING: { label: '아침', start: '08:20' },
+      LUNCH: { label: '점심시간', start: '13:30' },
+      AFTER_EARLY: { label: '방과후', start: '16:10' },
+      AFTER: { label: '방과후', start: '17:10' },
     };
-    const DAY_SLOTS = { 1: ['LUNCH'], 2: ['AFTER'], 3: ['LUNCH'], 4: ['LUNCH'], 5: ['LUNCH'] };
+    const DAY_SLOTS = {
+      1: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
+      2: ['MORNING', 'AFTER'],
+      3: ['MORNING', 'LUNCH', 'AFTER'],
+      4: ['MORNING', 'LUNCH', 'AFTER'],
+      5: ['MORNING', 'LUNCH', 'AFTER_EARLY'],
+    };
     const KEY = 'counsel-demo-bookings';
     const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
     const save = (rows) => { try { localStorage.setItem(KEY, JSON.stringify(rows)); } catch {} };
@@ -52,7 +61,7 @@
       const list = rows.filter((r) => r.studentId === String(p.studentId).trim() && r.password === p.password
         && r.status === '예약' && r.date >= fmt(new Date()));
       if (!list.length) fail('학번과 비밀번호가 일치하는 예약이 없습니다.');
-      return list.sort((a, b) => (a.date + a.slot).localeCompare(b.date + b.slot));
+      return list.sort((a, b) => (a.date + SLOTS[a.slot].start).localeCompare(b.date + SLOTS[b.slot].start));
     };
     const handlers = {
       availability() {
@@ -102,7 +111,7 @@
   const dateLabel = (s) => { const d = parse(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`; };
   const slotLabel = (key) => {
     const s = state.data && state.data.slots[key];
-    return s ? `${s.label} ${s.start}~${s.end}` : key;
+    return s ? `${s.label} ${s.start}~` : key;
   };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -149,7 +158,6 @@
 
   function renderCalendar() {
     const { days, today, slots } = state.data;
-    $('slotInfo').textContent = Object.values(slots).map((s) => `${s.label} ${s.start}~${s.end}`).join(' · ');
     const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
     const root = $('calendar');
     root.innerHTML = '';
@@ -180,7 +188,7 @@
             disabled: s.status !== 'open',
             title: `${dateLabel(key)} ${slotLabel(s.key)}`,
             onclick: () => pickSlot(key, s.key),
-          }, text, el('small', {}, `${meta.start}~${meta.end}`)));
+          }, text, el('small', {}, `${meta.start}~`)));
         }
         week.append(cell);
       }
